@@ -159,8 +159,13 @@ class Cdm:
             else:
                 new_rev_info = licence.rev_info
 
-            Storage.write_file(RevocationList.CurrentRevListStorageName, new_rev_info)
-            Storage.write_file(RevocationList.loads(new_rev_info).get_storage_file_name(), new_rev_info)
+            new_rev_info_xml = ET.tostring(
+                new_rev_info,
+                xml_declaration=True,
+                encoding="utf-8"
+            )
+            Storage.write_file(RevocationList.CurrentRevListStorageName, new_rev_info_xml)
+            Storage.write_file(RevocationList.loads(new_rev_info).get_storage_file_name(), new_rev_info_xml)
 
         for xmr_license in licence.licenses:
             session.keys.append(xmr_license.get_content_key(session.encryption_key))

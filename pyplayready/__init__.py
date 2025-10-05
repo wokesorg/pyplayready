@@ -16,4 +16,4 @@ from pyplayready.misc.revocation_list import *
 from pyplayready.misc.storage import *
 
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
