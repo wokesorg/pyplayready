@@ -14,10 +14,11 @@ from enum import IntEnum
 
 from Crypto.PublicKey import ECC
 
-from construct import Bytes, Const, Int32ub, GreedyRange, Switch, Container, ListContainer
+from construct import Bytes, Const, Int32ub, GreedyRange, Switch, Container, ListContainer, Embedded
 from construct import Int16ub, Array
 from construct import Struct, this
 
+from pyplayready.system.util import Util
 from pyplayready.crypto import Crypto
 from pyplayready.misc.exceptions import InvalidCertificateChain, InvalidCertificate
 from pyplayready.crypto.ecc_key import ECCKey
@@ -127,6 +128,12 @@ class BCertFeatures(IntEnum):
 
 
 class _BCertStructs:
+    Header = Struct(
+        "flags" / Int16ub,
+        "tag" / Int16ub,
+        "length" / Int32ub,
+    )
+
     BasicInfo = Struct(
         "cert_id" / Bytes(16),
         "security_level" / Int32ub,
@@ -224,10 +231,22 @@ class _BCertStructs:
         "signature" / Bytes(this.signature_size)
     )
 
+    ExtDataHwid = Struct(
+        "record_length" / Int32ub,
+        "record_data" / Bytes(this.record_length),
+        "padding" / Bytes((4 - (this.record_length % 4)) % 4)
+    )
+
+    # defined manually, since refactoring everything is not worth it
     ExtDataContainer = Struct(
-        "record_count" / Int32ub,  # always 1
-        "records" / Array(this.record_count, DataRecord),
-        "signature" / ExtDataSignature
+        "record" / Struct(
+            Embedded(Header),
+            Embedded(ExtDataHwid)
+        ),
+        "signature" / Struct(
+            Embedded(Header),
+            Embedded(ExtDataSignature)
+        )
     )
 
     # TODO: untested
@@ -242,9 +261,7 @@ class _BCertStructs:
     )
 
     Attribute = Struct(
-        "flags" / Int16ub,
-        "tag" / Int16ub,
-        "length" / Int32ub,
+        Embedded(Header),
         "attribute" / Switch(
             lambda this_: this_.tag,
             {
@@ -260,8 +277,8 @@ class _BCertStructs:
                 BCertObjType.METERING: MeteringInfo,
                 BCertObjType.EXTDATASIGNKEY: ExtDataSignKeyInfo,
                 BCertObjType.EXTDATACONTAINER: ExtDataContainer,
-                BCertObjType.EXTDATASIGNATURE: ExtDataSignature,
-                BCertObjType.EXTDATA_HWID: Bytes(this.length - 8),
+                # BCertObjType.EXTDATASIGNATURE: ExtDataSignature,
+                # BCertObjType.EXTDATA_HWID: ExtDataHwid,
                 BCertObjType.SERVER: ServerInfo,
                 BCertObjType.SECURITY_VERSION: SecurityVersion,
                 BCertObjType.SECURITY_VERSION_2: SecurityVersion
@@ -462,15 +479,16 @@ class Certificate(_BCertStructs):
         return None
 
     def get_name(self) -> Optional[str]:
-        manufacturer_info = self.get_attribute(BCertObjType.MANUFACTURER)
+        manufacturer_info_attr = self.get_attribute(BCertObjType.MANUFACTURER)
 
-        if manufacturer_info:
-            manufacturer_info_attr = manufacturer_info.attribute
+        if manufacturer_info_attr:
+            manufacturer_info = manufacturer_info_attr.attribute
 
-            def un_pad(name: bytes):
-                return name.rstrip(b'\x00').decode("utf-8", errors="ignore")
+            manufacturer = Util.un_pad(manufacturer_info.manufacturer_name)
+            model_name = Util.un_pad(manufacturer_info.model_name)
+            model_number = Util.un_pad(manufacturer_info.model_number)
 
-            return f"{un_pad(manufacturer_info_attr.manufacturer_name)} {un_pad(manufacturer_info_attr.model_name)} {un_pad(manufacturer_info_attr.model_number)}"
+            return f"{manufacturer} {model_name} {model_number}"
 
         return None
 
@@ -524,13 +542,40 @@ class Certificate(_BCertStructs):
     def dumps(self) -> bytes:
         return self._BCERT.build(self.parsed)
 
+    def _verify_extdata_signature(self) -> None:
+        sign_key = self.get_attribute(BCertObjType.EXTDATASIGNKEY)
+        if not sign_key:
+            raise InvalidCertificate("No extdata sign key object found in certificate")
+
+        sign_key_bytes = sign_key.attribute.key
+
+        signing_key = ECC.construct(
+            point_x=int.from_bytes(sign_key_bytes[:32], "big"),
+            point_y=int.from_bytes(sign_key_bytes[32:], "big"),
+            curve="P-256"
+        )
+
+        extdata = self.get_attribute(BCertObjType.EXTDATACONTAINER)
+        if not extdata:
+            raise InvalidCertificate("No extdata container found in certificate")
+
+        signature = extdata.attribute.signature.signature
+
+        sign_data = _BCertStructs.ExtDataContainer.subcons[0].build(extdata.attribute.record)
+
+        if not Crypto.ecc256_verify(
+            public_key=signing_key,
+            data=sign_data,
+            signature=signature
+        ):
+            raise InvalidCertificate("Signature of certificate extdata is not authentic")
+
     def verify_signature(self) -> None:
         signature_object = self.get_attribute(BCertObjType.SIGNATURE)
         if not signature_object:
-            raise InvalidCertificate(f"No signature object found in certificate")
+            raise InvalidCertificate("No signature object found in certificate")
 
         signature_attribute = signature_object.attribute
-
         raw_signature_key = signature_attribute.signature_key
 
         signature_key = ECC.construct(
@@ -546,7 +591,14 @@ class Certificate(_BCertStructs):
             data=sign_payload,
             signature=signature_attribute.signature
         ):
-            raise InvalidCertificate(f"Signature of certificate is not authentic")
+            raise InvalidCertificate("Signature of certificate is not authentic")
+
+        basic_info_attribute = self.get_attribute(BCertObjType.BASIC)
+        if not basic_info_attribute:
+            raise InvalidCertificate("No basic info object found in certificate")
+
+        if basic_info_attribute.attribute.flags & BCertFlag.EXTDATA_PRESENT == BCertFlag.EXTDATA_PRESENT:
+            self._verify_extdata_signature()
 
 
 class CertificateChain(_BCertStructs):

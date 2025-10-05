@@ -1,5 +1,3 @@
-from pyplayready.misc.drmresults import DrmResult
-
 class PyPlayreadyException(Exception):
     """Exceptions used by pyplayready."""
 
@@ -12,8 +10,20 @@ class InvalidSession(PyPlayreadyException):
     """No Session is open with the specified identifier."""
 
 
+class InvalidSoapMessage(PyPlayreadyException):
+    """The Soap Message is invalid or empty."""
+
+
 class InvalidPssh(PyPlayreadyException):
     """The Playready PSSH is invalid or empty."""
+
+
+class InvalidWrmHeader(PyPlayreadyException):
+    """The Playready WRMHEADER is invalid or empty."""
+
+
+class InvalidChecksum(PyPlayreadyException):
+    """The Playready WRMHEADER key ID checksum is invalid or empty."""
 
 
 class InvalidInitData(PyPlayreadyException):
@@ -24,8 +34,12 @@ class DeviceMismatch(PyPlayreadyException):
     """The Remote CDMs Device information and the APIs Device information did not match."""
 
 
-class InvalidLicense(PyPlayreadyException):
+class InvalidXmrLicense(PyPlayreadyException):
     """Unable to parse XMR License."""
+
+
+class InvalidLicense(PyPlayreadyException):
+    """Unable to parse License XML."""
 
 
 class InvalidCertificate(PyPlayreadyException):
@@ -41,4 +55,8 @@ class OutdatedDevice(PyPlayreadyException):
 
 
 class ServerException(PyPlayreadyException):
-    """Recasted on the client if found in license response."""
+    """Re-casted on the client if found in license response."""
+
+
+class InvalidRevocationList(PyPlayreadyException):
+    """The RevocationList is not correctly formatted."""

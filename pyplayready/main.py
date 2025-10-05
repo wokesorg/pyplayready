@@ -7,12 +7,13 @@ import click
 import requests
 from Crypto.Random import get_random_bytes
 
-from pyplayready import __version__, InvalidCertificateChain, InvalidLicense
+from pyplayready import __version__, InvalidCertificateChain, InvalidXmrLicense
 from pyplayready.cdm import Cdm
 from pyplayready.crypto.ecc_key import ECCKey
 from pyplayready.crypto.key_wrap import unwrap_wrapped_key
 from pyplayready.device import Device
 from pyplayready.misc.exceptions import OutdatedDevice
+from pyplayready.misc.revocation_list import RevocationList
 from pyplayready.system.bcert import CertificateChain, Certificate, BCertCertType, BCertObjType, BCertFeatures, \
     BCertKeyType, BCertKeyUsage
 from pyplayready.system.pssh import PSSH
@@ -58,7 +59,7 @@ def license_(device_path: Path, pssh: PSSH, server: str) -> None:
     session_id = cdm.open()
     log.info("Opened Session")
 
-    challenge = cdm.get_license_challenge(session_id, pssh.wrm_headers[0])
+    challenge = cdm.get_license_challenge(session_id, pssh.wrm_headers[0], rev_lists=RevocationList.SupportedListIds)
     log.info("Created License Request (Challenge)")
     log.debug(challenge)
 
@@ -79,7 +80,7 @@ def license_(device_path: Path, pssh: PSSH, server: str) -> None:
 
     try:
         cdm.parse_license(session_id, licence)
-    except InvalidLicense as e:
+    except InvalidXmrLicense as e:
         log.error(e)
         return
 
@@ -100,7 +101,8 @@ def license_(device_path: Path, pssh: PSSH, server: str) -> None:
 def test(ctx: click.Context, device: Path, ckt: str, security_level: str) -> None:
     """
     Test the CDM code by getting Content Keys for the Tears Of Steel demo on the Playready Test Server.
-    https://testweb.playready.microsoft.com/Content/Content2X
+    https://learn.microsoft.com/en-us/playready/advanced/testcontent/playready-2x-test-content#tears-of-steel---4k-content
+
     + DASH Manifest URL: https://test.playready.microsoft.com/media/profficialsite/tearsofsteel_4k.ism/manifest.mpd
     + MSS Manifest URL: https://test.playready.microsoft.com/media/profficialsite/tearsofsteel_4k.ism.smoothstreaming/manifest
 
@@ -175,7 +177,7 @@ def create_device(
         raise InvalidCertificateChain("Device has already been provisioned")
 
     if certificate_chain.get(0).get_type() != BCertCertType.ISSUER:
-        raise InvalidCertificateChain("Leaf-most certificate must be of type ISSUER to issue certificate if type DEVICE")
+        raise InvalidCertificateChain("Leaf-most certificate must be of type ISSUER to issue certificate of type DEVICE")
 
     if not certificate_chain.get(0).contains_public_key(group_key):
         raise InvalidCertificateChain("Group key does not match this certificate")
@@ -411,23 +413,18 @@ def inspect(ctx: click.Context, device: Optional[Path], chain: Optional[Path]) -
     for i in range(chai.count()):
         cert = chai.get(i)
 
-        log.info(f"   Certificate {i}:")
+        log.info(f"   + Certificate {i}:")
 
         basic_info = cert.get_attribute(BCertObjType.BASIC)
         if basic_info:
-            log.info(f"   + Cert Type: {BCertCertType(basic_info.attribute.cert_type).name}")
-            log.info(f"   + Security Level: SL{basic_info.attribute.security_level}")
-            log.info(f"   + Expiration Date: {datetime.fromtimestamp(basic_info.attribute.expiration_date)}")
-            log.info(f"   + Client ID: {basic_info.attribute.client_id.hex()}")
+            log.info(f"     + Cert Type: {BCertCertType(basic_info.attribute.cert_type).name}")
+            log.info(f"     + Security Level: SL{basic_info.attribute.security_level}")
+            log.info(f"     + Expiration Date: {datetime.fromtimestamp(basic_info.attribute.expiration_date)}")
+            log.info(f"     + Client ID: {basic_info.attribute.client_id.hex()}")
 
-        manufacturer_info = cert.get_attribute(BCertObjType.MANUFACTURER)
-        if manufacturer_info:
-            manu_attr = manufacturer_info.attribute
-
-            def un_pad(name: bytes):
-                return name.rstrip(b'\x00').decode("utf-8", errors="ignore")
-
-            log.info( f"   + Name: {un_pad(manu_attr.manufacturer_name)} {un_pad(manu_attr.model_name)} {un_pad(manu_attr.model_number)}")
+        model_name = cert.get_name()
+        if model_name:
+            log.info( f"     + Name: {model_name}")
 
         feature_info = cert.get_attribute(BCertObjType.FEATURE)
         if feature_info and feature_info.attribute.feature_count > 0:
@@ -435,22 +432,22 @@ def inspect(ctx: click.Context, device: Optional[Path], chain: Optional[Path]) -
                 lambda x: BCertFeatures(x).name,
                 feature_info.attribute.features
             ))
-            log.info(f"   + Features: {', '.join(features)}")
+            log.info(f"     + Features: {', '.join(features)}")
 
         key_info = cert.get_attribute(BCertObjType.KEY)
         if key_info and key_info.attribute.key_count > 0:
             key_attr = key_info.attribute
-            log.info(f"   + Cert Keys:")
+            log.info(f"     + Cert Keys:")
             for idx, key in enumerate(key_attr.cert_keys):
-                log.info(f"     + Key {idx}:")
-                log.info(f"       + Type: {BCertKeyType(key.type).name}")
-                log.info(f"       + Key Length: {key.length} bits")
+                log.info(f"       + Key {idx}:")
+                log.info(f"         + Type: {BCertKeyType(key.type).name}")
+                log.info(f"         + Key Length: {key.length} bits")
                 usages = list(map(
                     lambda x: BCertKeyUsage(x).name,
                     key.usages
                 ))
                 if len(usages) > 0:
-                    log.info(f"       + Usages: {', '.join(usages)}")
+                    log.info(f"         + Usages: {', '.join(usages)}")
 
     return None
 

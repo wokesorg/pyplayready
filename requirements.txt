@@ -1,10 +1,9 @@
 requests
 pycryptodome
-ecpy
 construct==2.8.8
+ecpy
 click
 PyYAML
 aiohttp
-xmltodict
 cryptography
-lxml
+platformdirs
