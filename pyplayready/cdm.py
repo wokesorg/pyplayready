@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import xml.etree.ElementTree as ET
 from typing import List, Union, Optional
 from uuid import UUID
@@ -24,6 +25,7 @@ from pyplayready.system.wrmheader import WRMHeader
 
 class Cdm:
     MAX_NUM_OF_SESSIONS = 16
+    SESSION_TIMEOUT = 30
 
     def __init__(
             self,
@@ -59,6 +61,14 @@ class Cdm:
 
     def open(self) -> bytes:
         """Open a Playready Content Decryption Module (CDM) session"""
+        now = time.time()
+        expired = [
+            session_id for session_id, session in self.__sessions.items()
+            if (now - session.opened_at) > self.SESSION_TIMEOUT
+        ]
+        for session_id in expired:
+            del self.__sessions[session_id]
+
         if len(self.__sessions) > self.MAX_NUM_OF_SESSIONS:
             raise TooManySessions(f"Too many Sessions open ({self.MAX_NUM_OF_SESSIONS}).")
 
