@@ -95,7 +95,7 @@ def license_(device_path: Path, pssh: PSSH, server: str) -> None:
 
 @main.command()
 @click.argument("device", type=Path)
-@click.option("-c", "--ckt", type=click.Choice(["aesctr", "aescbc"], case_sensitive=False), default="aesctr", help="Content Key Encryption Type")
+@click.option("-c", "--ckt", type=click.Choice(["AES128BitCTR", "AES128BitCBC"], case_sensitive=False), default="AES128BitCTR", help="Content Key Encryption Type")
 @click.option("-sl", "--security_level", type=click.Choice(["150", "2000", "3000"]), default="2000", help="Minimum Security Level")
 @click.pass_context
 def test(ctx: click.Context, device: Path, ckt: str, security_level: str) -> None:
