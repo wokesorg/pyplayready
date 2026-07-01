@@ -64,10 +64,6 @@ class RemoteCdm(Cdm):
         if response.status_code != 200:
             self._logger.warning(f"Could not test Remote API version [{response.status_code}]")
 
-        server = response.headers.get("Server")
-        if not server or "playready serve" not in server.lower():
-            self._logger.warning(f"This Remote CDM API does not seem to be a playready serve API ({server}).")
-
     @classmethod
     def from_device(cls, device: Device) -> RemoteCdm:
         raise NotImplementedError("You cannot load a RemoteCdm from a local Device file.")
