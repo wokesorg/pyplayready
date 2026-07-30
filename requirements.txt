@@ -5,5 +5,5 @@ ecpy
 click
 PyYAML
 aiohttp
-cryptography
+cryptography==41.0.7
 platformdirs
