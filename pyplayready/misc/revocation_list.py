@@ -170,8 +170,8 @@ class RevocationList(_RevocationStructs):
 
         signing_key = ECC.construct(
             curve='P-256',
-            point_x=int.from_bytes(signing_pub_key[:32]),
-            point_y=int.from_bytes(signing_pub_key[32:])
+            point_x=int.from_bytes(signing_pub_key[:32], 'big'),
+            point_y=int.from_bytes(signing_pub_key[32:], 'big')
         )
 
         sign_payload = data_struct.build(crl.data)
