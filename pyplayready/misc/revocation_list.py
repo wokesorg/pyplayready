@@ -315,7 +315,8 @@ class RevocationList(_RevocationStructs):
             pub_key.verify(
                 signature=sig_bytes,
                 data=data_xml,
-                padding=padding.PSS(padding.MGF1(hashes.SHA1()), padding.PSS.MAX_LENGTH),
+                # Legacy WMDRM signatures use RSA-PSS with SHA-1 and an empty salt.
+                padding=padding.PSS(padding.MGF1(hashes.SHA1()), salt_length=0),
                 algorithm=hashes.SHA1()
             )
 
@@ -385,7 +386,8 @@ class RevocationList(_RevocationStructs):
             crl_pub_key.verify(
                 signature=wmdrmnet_parsed.signature,
                 data=self.WMDRMNETData.build(wmdrmnet_parsed.data),
-                padding=padding.PSS(padding.MGF1(hashes.SHA1()), padding.PSS.MAX_LENGTH),
+                # The CRL uses the same saltless RSA-PSS variant as its certificate.
+                padding=padding.PSS(padding.MGF1(hashes.SHA1()), salt_length=0),
                 algorithm=hashes.SHA1()
             )
 
